@@ -201,6 +201,7 @@ def carregar_dados():
     # Calcula health score
     df["Health Score"] = df.apply(calcular_health_score, axis=1)
     df["Status Health"] = df["Health Score"].apply(classificar_health_score)
+    df["Status Health"] = df["Status Health"].astype(str).str.strip()
 
     return df
 
@@ -370,18 +371,21 @@ if modo_visao == "Visão da carteira":
     st.markdown("## Relação entre uso e health score")
 
     fig_scatter = px.scatter(
-    df_filtrado,
-    x="Minutos de uso",
-    y="Health Score",
-    color="Status Health",
-    color_discrete_map={
-        "Saudável": "#2ecc71",
-        "Em atenção": "#f39c12",
-        "Em risco": "#e74c3c"
-    },
-    hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
-    title="Minutos de uso x Health Score"
-)
+        df_filtrado,
+        x="Minutos de uso",
+        y="Health Score",
+        color="Status Health",
+        hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
+        title="Minutos de uso x Health Score",
+        category_orders={
+            "Status Health": ["Em risco", "Em atenção", "Saudável"]
+        },
+        color_discrete_map={
+            "Em risco": "red",
+            "Em atenção": "yellow",
+            "Saudável": "green"
+        }
+    )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.markdown("## Clientes em risco")
@@ -546,7 +550,15 @@ if modo_visao == "Visão do cliente":
             y="Health Score",
             color="Status Health",
             hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
-            title="Posicionamento do cliente na carteira"
+            title="Posicionamento do cliente na carteira",
+            category_orders={
+                "Status Health": ["Em risco", "Em atenção", "Saudável"]
+            },
+            color_discrete_map={
+                "Em risco": "red",
+                "Em atenção": "yellow",
+                "Saudável": "green"
+            }
         )
 
         fig_scatter_cliente.add_scatter(
@@ -555,7 +567,11 @@ if modo_visao == "Visão do cliente":
             mode="markers+text",
             text=[str(cliente.get("Nome", "Cliente selecionado"))],
             textposition="top center",
-            marker=dict(size=16, symbol="diamond"),
+            marker=dict(
+                size=16,
+                color="blue",
+                symbol="diamond"
+            ),
             name="Cliente selecionado"
         )
 
