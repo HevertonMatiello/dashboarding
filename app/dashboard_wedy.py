@@ -105,6 +105,26 @@ def calcular_health_score(row):
     return round(min(total, 100), 2)
 
 
+def obter_nome_coluna_id(df):
+    possibilidades = [
+        "ID do cliente",
+        "Id do cliente",
+        "ID Cliente",
+        "Id Cliente",
+        "id_cliente",
+        "cliente_id",
+        "ID",
+        "Id",
+        "id"
+    ]
+
+    for coluna in possibilidades:
+        if coluna in df.columns:
+            return coluna
+
+    return None
+
+
 # =========================
 # LEITURA DA BASE
 # =========================
@@ -132,8 +152,14 @@ def carregar_dados():
                 df = df.rename(columns={col: "MRR"})
                 break
 
+    # Detecta coluna de ID
+    coluna_id = obter_nome_coluna_id(df)
+    if coluna_id and coluna_id != "ID do cliente":
+        df = df.rename(columns={coluna_id: "ID do cliente"})
+
     # Garante colunas esperadas
     colunas_esperadas = [
+        "ID do cliente",
         "Nome",
         "Empresa",
         "Segmento",
@@ -169,6 +195,9 @@ def carregar_dados():
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
+    # Padroniza ID
+    df["ID do cliente"] = df["ID do cliente"].astype(str).str.strip()
+
     # Calcula health score
     df["Health Score"] = df.apply(calcular_health_score, axis=1)
     df["Status Health"] = df["Health Score"].apply(classificar_health_score)
@@ -182,7 +211,16 @@ df = carregar_dados()
 # TÍTULO
 # =========================
 st.title("Dashboard de Health Score dos Clientes")
-st.caption("Visão analítica da base fake com cálculo de health score e indicadores de risco")
+st.caption("Visão analítica da carteira e análise individual de clientes com base no health score")
+
+# =========================
+# SELETOR DE VISÃO
+# =========================
+modo_visao = st.radio(
+    "Selecione a visão",
+    ["Visão da carteira", "Visão do cliente"],
+    horizontal=True
+)
 
 # =========================
 # SIDEBAR
@@ -192,6 +230,7 @@ st.sidebar.header("Filtros")
 segmentos = sorted([x for x in df["Segmento"].dropna().unique()])
 etapas = sorted([x for x in df["Etapa"].dropna().unique()])
 tipos_cliente = sorted([x for x in df["Tipo de cliente"].dropna().unique()])
+lista_ids = sorted([x for x in df["ID do cliente"].dropna().unique() if str(x).strip() not in ["", "nan", "None"]])
 
 filtro_segmento = st.sidebar.multiselect(
     "Segmento",
@@ -211,6 +250,11 @@ filtro_tipo = st.sidebar.multiselect(
     default=tipos_cliente
 )
 
+filtro_id = st.sidebar.selectbox(
+    "Buscar cliente por ID",
+    options=["Todos"] + lista_ids
+)
+
 df_filtrado = df.copy()
 
 if filtro_segmento:
@@ -222,215 +266,292 @@ if filtro_etapa:
 if filtro_tipo:
     df_filtrado = df_filtrado[df_filtrado["Tipo de cliente"].isin(filtro_tipo)]
 
-# =========================
-# KPIS
-# =========================
-total_clientes = len(df_filtrado)
-clientes_ativos = (
-    df_filtrado["Cliente Ativo?"].astype(str).str.strip().str.lower() == "sim"
-).sum()
-
-clientes_churn = (
-    df_filtrado["Churn?"].astype(str).str.strip().str.lower() == "sim"
-).sum()
-
-mrr_total = df_filtrado["MRR"].sum(skipna=True)
-uso_medio = df_filtrado["Minutos de uso"].mean()
-health_medio = df_filtrado["Health Score"].mean()
-
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-
-c1.metric("Clientes", total_clientes)
-c2.metric("Ativos", int(clientes_ativos))
-c3.metric("Churn", int(clientes_churn))
-c4.metric("MRR Total", formatar_moeda(mrr_total))
-c5.metric("Uso Médio", f"{0 if pd.isna(uso_medio) else uso_medio:.2f} min")
-c6.metric("Health Médio", f"{0 if pd.isna(health_medio) else health_medio:.2f}")
+df_cliente = df_filtrado.copy()
+if filtro_id != "Todos":
+    df_cliente = df_cliente[df_cliente["ID do cliente"] == filtro_id]
 
 # =========================
-# EXPLICAÇÃO DO SCORE
+# VISÃO DA CARTEIRA
 # =========================
-st.markdown("## Metodologia do Health Score")
+if modo_visao == "Visão da carteira":
+    st.markdown("## Visão da carteira")
 
-with st.expander("Ver cálculo do health score"):
-    st.markdown(
-        """
-        **Composição do score**
+    total_clientes = len(df_filtrado)
+    clientes_ativos = (
+        df_filtrado["Cliente Ativo?"].astype(str).str.strip().str.lower() == "sim"
+    ).sum()
 
-        Uso do produto  
-        até 35 pontos com base em minutos de uso
+    clientes_churn = (
+        df_filtrado["Churn?"].astype(str).str.strip().str.lower() == "sim"
+    ).sum()
 
-        Ativação  
-        20 pontos se a playlist foi aprovada
+    mrr_total = df_filtrado["MRR"].sum(skipna=True)
+    uso_medio = df_filtrado["Minutos de uso"].mean()
+    health_medio = df_filtrado["Health Score"].mean()
 
-        Etapa da jornada  
-        até 15 pontos conforme a fase do cliente
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Clientes", total_clientes)
+    c2.metric("Ativos", int(clientes_ativos))
+    c3.metric("Churn", int(clientes_churn))
+    c4.metric("MRR Total", formatar_moeda(mrr_total))
+    c5.metric("Uso Médio", f"{0 if pd.isna(uso_medio) else uso_medio:.2f} min")
+    c6.metric("Health Médio", f"{0 if pd.isna(health_medio) else health_medio:.2f}")
 
-        Ajustes  
-        até 10 pontos, sendo que menos ajustes gera score maior
+    st.markdown("## Análises gerais")
 
-        Tickets  
-        até 10 pontos, sendo que menos tickets gera score maior
+    col1, col2 = st.columns(2)
 
-        Relacionamento  
-        até 10 pontos com base na recência do último contato
+    with col1:
+        media_por_etapa = (
+            df_filtrado.groupby("Etapa", as_index=False)["Health Score"]
+            .mean()
+            .sort_values("Health Score", ascending=False)
+        )
 
-        **Regra especial**
+        fig_etapa = px.bar(
+            media_por_etapa,
+            x="Etapa",
+            y="Health Score",
+            text_auto=".2f",
+            title="Health Score médio por etapa"
+        )
+        st.plotly_chart(fig_etapa, use_container_width=True)
 
-        Se o cliente estiver em churn, o health score é zerado.
-        """
-    )
+    with col2:
+        media_por_segmento = (
+            df_filtrado.groupby("Segmento", as_index=False)["Health Score"]
+            .mean()
+            .sort_values("Health Score", ascending=False)
+        )
 
-# =========================
-# GRÁFICOS
-# =========================
-st.markdown("## Análises")
+        fig_segmento = px.bar(
+            media_por_segmento,
+            x="Segmento",
+            y="Health Score",
+            text_auto=".2f",
+            title="Health Score médio por segmento"
+        )
+        st.plotly_chart(fig_segmento, use_container_width=True)
 
-col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
 
-with col1:
-    media_por_etapa = (
-        df_filtrado.groupby("Etapa", as_index=False)["Health Score"]
-        .mean()
-        .sort_values("Health Score", ascending=False)
-    )
+    with col3:
+        churn_segmento = df_filtrado.copy()
+        churn_segmento["Churn Num"] = np.where(
+            churn_segmento["Churn?"].astype(str).str.strip().str.lower() == "sim",
+            1,
+            0
+        )
 
-    fig_etapa = px.bar(
-        media_por_etapa,
-        x="Etapa",
-        y="Health Score",
-        text_auto=".2f",
-        title="Health Score médio por etapa"
-    )
-    st.plotly_chart(fig_etapa, use_container_width=True)
+        churn_agrupado = (
+            churn_segmento.groupby("Segmento", as_index=False)["Churn Num"]
+            .mean()
+        )
+        churn_agrupado["Taxa de Churn"] = churn_agrupado["Churn Num"] * 100
 
-with col2:
-    media_por_segmento = (
-        df_filtrado.groupby("Segmento", as_index=False)["Health Score"]
-        .mean()
-        .sort_values("Health Score", ascending=False)
-    )
+        fig_churn = px.bar(
+            churn_agrupado,
+            x="Segmento",
+            y="Taxa de Churn",
+            text_auto=".2f",
+            title="Taxa de churn por segmento"
+        )
+        st.plotly_chart(fig_churn, use_container_width=True)
 
-    fig_segmento = px.bar(
-        media_por_segmento,
-        x="Segmento",
-        y="Health Score",
-        text_auto=".2f",
-        title="Health Score médio por segmento"
-    )
-    st.plotly_chart(fig_segmento, use_container_width=True)
+    with col4:
+        fig_hist = px.histogram(
+            df_filtrado,
+            x="Health Score",
+            nbins=20,
+            title="Distribuição do Health Score"
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
 
-col3, col4 = st.columns(2)
+    st.markdown("## Relação entre uso e health score")
 
-with col3:
-    churn_segmento = df_filtrado.copy()
-    churn_segmento["Churn Num"] = np.where(
-        churn_segmento["Churn?"].astype(str).str.strip().str.lower() == "sim",
-        1,
-        0
-    )
-
-    churn_agrupado = (
-        churn_segmento.groupby("Segmento", as_index=False)["Churn Num"]
-        .mean()
-    )
-    churn_agrupado["Taxa de Churn"] = churn_agrupado["Churn Num"] * 100
-
-    fig_churn = px.bar(
-        churn_agrupado,
-        x="Segmento",
-        y="Taxa de Churn",
-        text_auto=".2f",
-        title="Taxa de churn por segmento"
-    )
-    st.plotly_chart(fig_churn, use_container_width=True)
-
-with col4:
-    fig_hist = px.histogram(
+    fig_scatter = px.scatter(
         df_filtrado,
-        x="Health Score",
-        nbins=20,
-        title="Distribuição do Health Score"
+        x="Minutos de uso",
+        y="Health Score",
+        color="Status Health",
+        hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
+        title="Minutos de uso x Health Score"
     )
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_scatter, use_container_width=True)
 
-st.markdown("## Relação entre uso e health score")
+    st.markdown("## Clientes em risco")
 
-fig_scatter = px.scatter(
-    df_filtrado,
-    x="Minutos de uso",
-    y="Health Score",
-    color="Status Health",
-    hover_data=["Nome", "Empresa", "Segmento", "Etapa"],
-    title="Minutos de uso x Health Score"
-)
-st.plotly_chart(fig_scatter, use_container_width=True)
+    clientes_risco = df_filtrado[df_filtrado["Status Health"] == "Em risco"].copy()
+    clientes_risco = clientes_risco.sort_values("Health Score", ascending=True)
 
-# =========================
-# CLIENTES EM RISCO
-# =========================
-st.markdown("## Clientes em risco")
+    colunas_risco = [
+        "ID do cliente",
+        "Nome",
+        "Empresa",
+        "Segmento",
+        "Etapa",
+        "Minutos de uso",
+        "Quantidade de ajustes",
+        "Quantidade de tickets",
+        "MRR",
+        "Health Score",
+        "Status Health"
+    ]
 
-clientes_risco = df_filtrado[df_filtrado["Status Health"] == "Em risco"].copy()
-clientes_risco = clientes_risco.sort_values("Health Score", ascending=True)
+    st.dataframe(
+        clientes_risco[colunas_risco],
+        use_container_width=True,
+        height=300
+    )
 
-colunas_risco = [
-    "Nome",
-    "Empresa",
-    "Segmento",
-    "Etapa",
-    "Minutos de uso",
-    "Quantidade de ajustes",
-    "Quantidade de tickets",
-    "MRR",
-    "Health Score",
-    "Status Health"
-]
+    st.markdown("## Base detalhada da carteira")
 
-st.dataframe(
-    clientes_risco[colunas_risco],
-    use_container_width=True,
-    height=300
-)
+    colunas_exibir = [
+        "ID do cliente",
+        "Nome",
+        "Empresa",
+        "Segmento",
+        "Tipo de cliente",
+        "Etapa",
+        "Minutos de uso",
+        "Playlist aprovada",
+        "Quantidade de ajustes",
+        "Quantidade de tickets",
+        "Cliente Ativo?",
+        "Churn?",
+        "Último contato",
+        "MRR",
+        "Health Score",
+        "Status Health"
+    ]
 
-# =========================
-# BASE COMPLETA
-# =========================
-st.markdown("## Base detalhada")
+    st.dataframe(
+        df_filtrado[colunas_exibir].sort_values("Health Score", ascending=False),
+        use_container_width=True,
+        height=500
+    )
 
-colunas_exibir = [
-    "Nome",
-    "Empresa",
-    "Segmento",
-    "Tipo de cliente",
-    "Etapa",
-    "Minutos de uso",
-    "Playlist aprovada",
-    "Quantidade de ajustes",
-    "Quantidade de tickets",
-    "Cliente Ativo?",
-    "Churn?",
-    "Último contato",
-    "MRR",
-    "Health Score",
-    "Status Health"
-]
+    st.markdown("## Exportação")
 
-st.dataframe(
-    df_filtrado[colunas_exibir].sort_values("Health Score", ascending=False),
-    use_container_width=True,
-    height=500
-)
+    csv = df_filtrado.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Baixar base da carteira em CSV",
+        data=csv,
+        file_name="base_health_score_wedy_carteira.csv",
+        mime="text/csv"
+    )
 
 # =========================
-# DOWNLOAD CSV
+# VISÃO DO CLIENTE
 # =========================
-st.markdown("## Exportação")
+if modo_visao == "Visão do cliente":
+    st.markdown("## Visão do cliente")
 
-csv = df_filtrado.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="Baixar base tratada em CSV",
-    data=csv,
-    file_name="base_health_score_wedy.csv",
-    mime="text/csv"
-)
+    if filtro_id == "Todos":
+        st.info("Selecione um ID do cliente no filtro lateral para visualizar a análise individual.")
+    elif df_cliente.empty:
+        st.warning("Nenhum cliente encontrado para esse ID dentro dos filtros aplicados.")
+    else:
+        cliente = df_cliente.iloc[0]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("ID do Cliente", cliente.get("ID do cliente", ""))
+        c2.metric("Cliente", cliente.get("Nome", ""))
+        c3.metric("Empresa", cliente.get("Empresa", ""))
+        c4.metric("Health Score", f"{cliente.get('Health Score', 0):.2f}")
+
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("Status", cliente.get("Status Health", ""))
+        c6.metric("Etapa", cliente.get("Etapa", ""))
+        c7.metric(
+            "Minutos de uso",
+            f"{0 if pd.isna(cliente.get('Minutos de uso')) else cliente.get('Minutos de uso'):.2f}"
+        )
+        c8.metric("MRR", formatar_moeda(cliente.get("MRR", 0)))
+
+        st.markdown("## Indicadores do cliente")
+
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Playlist aprovada", cliente.get("Playlist aprovada", ""))
+        d2.metric(
+            "Quantidade de ajustes",
+            f"{0 if pd.isna(cliente.get('Quantidade de ajustes')) else int(cliente.get('Quantidade de ajustes'))}"
+        )
+        d3.metric(
+            "Quantidade de tickets",
+            f"{0 if pd.isna(cliente.get('Quantidade de tickets')) else int(cliente.get('Quantidade de tickets'))}"
+        )
+        d4.metric("Cliente Ativo?", cliente.get("Cliente Ativo?", ""))
+
+        st.markdown("## Detalhamento do cliente")
+
+        detalhe_cliente = pd.DataFrame([{
+            "ID do cliente": cliente.get("ID do cliente", ""),
+            "Nome": cliente.get("Nome", ""),
+            "Empresa": cliente.get("Empresa", ""),
+            "Segmento": cliente.get("Segmento", ""),
+            "Tipo de cliente": cliente.get("Tipo de cliente", ""),
+            "Etapa": cliente.get("Etapa", ""),
+            "Cliente Ativo?": cliente.get("Cliente Ativo?", ""),
+            "Churn?": cliente.get("Churn?", ""),
+            "Playlist aprovada": cliente.get("Playlist aprovada", ""),
+            "Minutos de uso": cliente.get("Minutos de uso", np.nan),
+            "Quantidade de ajustes": cliente.get("Quantidade de ajustes", np.nan),
+            "Quantidade de tickets": cliente.get("Quantidade de tickets", np.nan),
+            "Último contato": cliente.get("Último contato", ""),
+            "MRR": cliente.get("MRR", np.nan),
+            "Health Score": cliente.get("Health Score", np.nan),
+            "Status Health": cliente.get("Status Health", "")
+        }])
+
+        st.dataframe(
+            detalhe_cliente,
+            use_container_width=True,
+            height=150
+        )
+
+        st.markdown("## Comparativo do cliente com a carteira")
+
+        media_health_carteira = df_filtrado["Health Score"].mean()
+        media_uso_carteira = df_filtrado["Minutos de uso"].mean()
+        media_mrr_carteira = df_filtrado["MRR"].mean()
+
+        comp1, comp2, comp3 = st.columns(3)
+        comp1.metric(
+            "Health Score do cliente vs média da carteira",
+            f"{cliente.get('Health Score', 0):.2f}",
+            delta=f"{cliente.get('Health Score', 0) - (0 if pd.isna(media_health_carteira) else media_health_carteira):.2f}"
+        )
+        comp2.metric(
+            "Uso do cliente vs média da carteira",
+            f"{0 if pd.isna(cliente.get('Minutos de uso')) else cliente.get('Minutos de uso'):.2f} min",
+            delta=f"{(0 if pd.isna(cliente.get('Minutos de uso')) else cliente.get('Minutos de uso')) - (0 if pd.isna(media_uso_carteira) else media_uso_carteira):.2f}"
+        )
+        comp3.metric(
+            "MRR do cliente vs média da carteira",
+            formatar_moeda(cliente.get("MRR", 0)),
+            delta=f"{(0 if pd.isna(cliente.get('MRR')) else cliente.get('MRR')) - (0 if pd.isna(media_mrr_carteira) else media_mrr_carteira):.2f}"
+        )
+
+        st.markdown("## Posição do cliente no scatter da carteira")
+
+        fig_scatter_cliente = px.scatter(
+            df_filtrado,
+            x="Minutos de uso",
+            y="Health Score",
+            color="Status Health",
+            hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
+            title="Posicionamento do cliente na carteira"
+        )
+
+        fig_scatter_cliente.add_scatter(
+            x=[cliente.get("Minutos de uso", 0)],
+            y=[cliente.get("Health Score", 0)],
+            mode="markers+text",
+            text=[str(cliente.get("Nome", "Cliente selecionado"))],
+            textposition="top center",
+            marker=dict(size=16, symbol="diamond"),
+            name="Cliente selecionado"
+        )
+
+        st.plotly_chart(fig_scatter_cliente, use_container_width=True)
