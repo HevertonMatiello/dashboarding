@@ -5,11 +5,10 @@ Dashboard em Streamlit para análise de clientes com cálculo de health score us
 ## Estrutura do projeto
 
 ```bash
-dashboard-wedy/
-├── app/
-│   └── dashboard_wedy.py
-├── data/
-│   └── base_clientes_wedy.xlsx
-├── .gitignore
-├── README.md
-└── requirements.txt
+daplicativo/
+  dashboard_wedy.py
+
+base_clientes_wedy.xlsx
+requisitos.txt
+README.md
+.gitignore
