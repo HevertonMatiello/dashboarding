@@ -370,13 +370,18 @@ if modo_visao == "Visão da carteira":
     st.markdown("## Relação entre uso e health score")
 
     fig_scatter = px.scatter(
-        df_filtrado,
-        x="Minutos de uso",
-        y="Health Score",
-        color="Status Health",
-        hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
-        title="Minutos de uso x Health Score"
-    )
+    df_filtrado,
+    x="Minutos de uso",
+    y="Health Score",
+    color="Status Health",
+    color_discrete_map={
+        "Saudável": "#2ecc71",
+        "Em atenção": "#f39c12",
+        "Em risco": "#e74c3c"
+    },
+    hover_data=["ID do cliente", "Nome", "Empresa", "Segmento", "Etapa"],
+    title="Minutos de uso x Health Score"
+)
     st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.markdown("## Clientes em risco")
