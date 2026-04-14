@@ -13,7 +13,7 @@ st.set_page_config(
 # CAMINHO DO ARQUIVO
 # =========================
 BASE_DIR = Path(__file__).resolve().parent.parent
-ARQUIVO_DADOS = BASE_DIR / "data" / "base_clientes_wedy.xlsx"
+ARQUIVO_DADOS = BASE_DIR / "base_clientes_wedy.xlsx"
 
 
 # =========================
